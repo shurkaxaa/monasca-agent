@@ -260,9 +260,9 @@ class LXDCheck(AgentCheck):
         # Remove inactive VMs from the metric cache
         write_metric_cache = deepcopy(metric_cache)
         for instance in metric_cache:
-            if (('cpu.time' not in metric_cache[instance] or
+            if (('mem.free_mb' not in metric_cache[instance] or
                  self._test_vm_probation(time.strftime('%Y-%m-%dT%H:%M:%SZ',
-                                         time.gmtime(metric_cache[instance]['cpu.time']['timestamp'] + run_time))) < 0)):
+                                         time.gmtime(metric_cache[instance]['mem.free_mb']['timestamp'] + run_time))) < 0)):
                 self.log.info("Expiring old/empty {0} from cache".format(instance))
                 del(write_metric_cache[instance])
         try:
@@ -518,6 +518,10 @@ class LXDCheck(AgentCheck):
                            'mem.total_mb': float(mem_stats['available']) / 1024,
                            'mem.used_mb': float(mem_stats['available'] - mem_stats['unused']) / 1024,
                            'mem.free_perc': float(mem_stats['unused']) / float(mem_stats['available']) * 100}
+            sample_time = float("{:9f}".format(time.time()))
+            metric_cache[inst_name]['mem.free_mb'] = {
+                'timestamp': sample_time,
+                'value': mem_metrics['mem.total_mb']}
             for name in mem_metrics:
                 self.gauge(name, mem_metrics[name], dimensions=dims_customer,
                            delegated_tenant=instance_cache.get(inst_name)['tenant_id'],
