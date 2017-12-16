@@ -74,6 +74,17 @@ class LXDInspector(inspector.Inspector):
                                              tx_errors=0, tx_dropped=0)
             yield (interface, stats)
 
+    def inspect_cpus(self, instance):
+        # number: number of CPUs
+        # time: cumulative CPU time
+        try:
+            num_cores = int(instance.expanded_config['limits.cpu'])
+        except KeyError, ValueError:
+            num_cores = 0 # TODO how handle unlimimited?
+        return inspector.CPUStats(
+            number=num_cores,
+            time=instance.state().cpu['usage'])
+
 
 class LXDCheck(AgentCheck):
     """Inherit Agent class and gather libvirt metrics"""
@@ -338,6 +349,68 @@ class LXDCheck(AgentCheck):
                     'timestamp': sample_time,
                     'value': value}
 
+    def _inspect_cpu(self, insp, inst, inst_name, instance_cache, metric_cache, dims_customer, dims_operations):
+        """Inspect cpu metrics for an instance"""
+
+        sample_time = float("{:9f}".format(time.time()))
+        cpu_info = insp.inspect_cpus(inst)
+
+        if 'cpu.time' in metric_cache[inst_name] and cpu_info.number:
+            # I have a prior value, so calculate the used_cores & push the metric
+            cpu_diff = cpu_info.time - metric_cache[inst_name]['cpu.time']['value']
+            time_diff = sample_time - float(metric_cache[inst_name]['cpu.time']['timestamp'])
+            # Convert time_diff to nanoseconds, and calculate percentage
+            used_cores = (cpu_diff / (time_diff * 1000000000))
+            # Divide by the number of cores to normalize the percentage
+            normalized_perc = (used_cores / cpu_info.number) * 100
+            if used_cores < 0:
+                # Bad value, save current reading and skip
+                self.log.warn("Ignoring negative CPU sample for: "
+                              "{0} new cpu time: {1} old cpu time: {2}"
+                              .format(inst_name, cpu_info.time,
+                                      metric_cache[inst_name]['cpu.time']['value']))
+                metric_cache[inst_name]['cpu.time'] = {'timestamp': sample_time,
+                                                       'value': cpu_info.time}
+                return
+
+            self.gauge('cpu.total_cores', float(cpu_info.number),
+                       dimensions=dims_customer,
+                       delegated_tenant=instance_cache.get(inst_name)['tenant_id'],
+                       hostname=instance_cache.get(inst_name)['hostname'])
+            self.gauge('cpu.used_cores', float(used_cores),
+                       dimensions=dims_customer,
+                       delegated_tenant=instance_cache.get(inst_name)['tenant_id'],
+                       hostname=instance_cache.get(inst_name)['hostname'])
+            self.gauge('cpu.utilization_perc', int(round(used_cores * 100, 0)),
+                       dimensions=dims_customer,
+                       delegated_tenant=instance_cache.get(inst_name)['tenant_id'],
+                       hostname=instance_cache.get(inst_name)['hostname'])
+            self.gauge('cpu.utilization_norm_perc', int(round(normalized_perc, 0)),
+                       dimensions=dims_customer,
+                       delegated_tenant=instance_cache.get(inst_name)['tenant_id'],
+                       hostname=instance_cache.get(inst_name)['hostname'])
+
+            self.gauge('lxd.cpu.total_cores', float(cpu_info.number),
+                       dimensions=dims_operations)
+            self.gauge('lxd.cpu.used_cores', float(used_cores),
+                       dimensions=dims_operations)
+            self.gauge('lxd.cpu.utilization_perc', int(round(used_cores * 100, 0)),
+                       dimensions=dims_operations)
+            self.gauge('lxd.cpu.utilization_norm_perc', int(round(normalized_perc, 0)),
+                       dimensions=dims_operations)
+
+            cpu_time_name = 'cpu.time_ns'
+            # cpu.time_ns for owning tenant
+            self.gauge(cpu_time_name, cpu_info.time,
+                       dimensions=dims_customer,
+                       delegated_tenant=instance_cache.get(inst_name)['tenant_id'],
+                       hostname=instance_cache.get(inst_name)['hostname'])
+            # lxd.cpu.time_ns for operations tenant
+            self.gauge("lxd.{0}".format(cpu_time_name), cpu_info.time,
+                       dimensions=dims_operations)
+        metric_cache[inst_name]['cpu.time'] = {'timestamp': sample_time,
+                                               'value': cpu_info.time}
+
     def _inspect_state(self, insp, inst, inst_name, instance_cache, dims_customer, dims_operations):
         """Look at the state of the instance, publish a metric using a
            user-friendly description in the 'detail' metadata, and return
@@ -507,6 +580,9 @@ class LXDCheck(AgentCheck):
 
             if inst_name not in metric_cache:
                 metric_cache[inst_name] = {}
+
+            if self.init_config.get('vm_cpu_check_enable'):
+                self._inspect_cpu(insp, inst, inst_name, instance_cache, metric_cache, dims_customer, dims_operations)
 
             if not self._collect_intervals['vnic']['skip']:
                 if self.init_config.get('vm_network_check_enable'):

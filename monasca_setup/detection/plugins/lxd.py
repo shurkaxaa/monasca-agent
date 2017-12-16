@@ -126,6 +126,7 @@ class LXD(plugin.Plugin):
             'vm_probation': vm_probation,
             'customer_metadata': customer_metadata,
             'vnic_collection_period': default_vnic_collection_period,
+            'vm_cpu_check_enable': True,
             'vm_network_check_enable': True,
             'username': keystone_auth_section['username'],
             'password': keystone_auth_section['password'],
