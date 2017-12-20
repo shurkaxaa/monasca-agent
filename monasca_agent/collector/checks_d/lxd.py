@@ -499,7 +499,10 @@ class LXDCheck(AgentCheck):
         instance_cache = self._load_instance_cache()
 
         # Build dimensions for both the customer and for operations
-        dims_base = self._set_dimensions({'service': 'compute', 'component': 'lxd'}, instance)
+        dims_base = self._set_dimensions({
+            'service': 'compute',
+            'component': 'lxd',
+            'node_type': 'container'}, instance)
 
         # Define aggregate gauges, gauge name to metric name
         agg_gauges = {'vcpus': 'nova.lxd.cpu.total_allocated',
