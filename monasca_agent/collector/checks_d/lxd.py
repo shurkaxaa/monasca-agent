@@ -502,6 +502,7 @@ class LXDCheck(AgentCheck):
         dims_base = self._set_dimensions({
             'service': 'compute',
             'component': 'lxd',
+            'physical_host': self.hostname,
             'node_type': 'container'}, instance)
 
         # Define aggregate gauges, gauge name to metric name
