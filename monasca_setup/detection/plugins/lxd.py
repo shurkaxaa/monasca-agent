@@ -143,7 +143,7 @@ class LXD(plugin.Plugin):
     def _find_nova_conf(nova_process):
         try:
             nova_cmd = nova_process.as_dict(['cmdline'])['cmdline']
-            return utils.load_oslo_configuration(from_cmd=[arg for arg in nova_cmd if "log-file" not in arg],
+            return utils.load_oslo_configuration(nova_cmd,
                                                  in_project='nova',
                                                  for_opts=_REQUIRED_OPTS)
         except cfg.Error:

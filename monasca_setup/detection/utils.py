@@ -183,7 +183,7 @@ def load_oslo_configuration(from_cmd, in_project,
     # /usr/bin/python, /usr/bin/python3
     # and next actual binary of the program
     # /usr/local/bin/nova-compute
-    args = from_cmd[2:]
+    args = filter(lambda val: not val.startswith('--log-file'), from_cmd[2:])
     conf_holder(
         args=args,
         project=in_project,
